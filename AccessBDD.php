@@ -12,7 +12,7 @@ class AccessBDD {
     public $serveur="localhost";
     public $port="3306";	
     public $conn = null;
-
+    
     /**
      * constructeur : demande de connexion à la BDD
      */
@@ -44,8 +44,9 @@ class AccessBDD {
                 case "public" :
                 case "rayon" :
                 case "etat" :
-                    // select portant sur une table contenant juste id et libelle
-                    return $this->selectTableSimple($table);
+                    return $this->selectTable($table);
+                case "commandedocument":
+                    return $this->selectAllCommandesDoc();
                 default:
                     // select portant sur une table, sans condition
                     return $this->selectTable($table);
@@ -66,6 +67,8 @@ class AccessBDD {
             switch($table){
                 case "exemplaire" :
                     return $this->selectExemplairesRevue($champs['id']);
+                case "commandedocument" :
+                    return $this->selectCommandesDoc($champs['id']);
                 default:                    
                     // cas d'un select sur une table avec recherche sur des champs
                     return $this->selectTableOnConditons($table, $champs);					
@@ -155,8 +158,8 @@ class AccessBDD {
         $req .= "join rayon r on r.id=d.idRayon ";
         $req .= "order by titre ";
         return $this->conn->query($req);
-    }	
-
+    }
+    
     /**
      * récupération de tous les exemplaires d'une revue
      * @param string $id id de la revue
@@ -171,7 +174,40 @@ class AccessBDD {
         $req .= "where e.id = :id ";
         $req .= "order by e.dateAchat DESC";		
         return $this->conn->query($req, $param);
-    }		
+    }
+    
+    /**
+     * récupération de toutes les commandes
+     * @return lignes de la requete
+     */
+    public function selectAllCommandesDoc(){
+        $req = "Select cd.id, cd.idLivreDvd, c.dateCommande, c.montant, cd.nbExemplaire, s.etapesuivi ";
+        $req .= "from commande c ";
+        $req .= "left join commandedocument cd on c.id=cd.id ";
+        $req .= "left join suivi s on c.id=s.id ";
+        $req .= "group by cd.id ";
+        $req .= "order by c.dateCommande DESC";
+        return $this->conn->query($req);
+    }
+    
+    /**
+     * récupération de toutes les commandes d'un document
+     * @param string $id id de la commande
+     * @return lignes de la requete
+     */
+    public function selectCommandesDoc($id){
+        $param = array(
+                "id" => $id
+        );
+        $req = "Select cd.id, cd.idLivreDvd, c.dateCommande, c.montant, cd.nbExemplaire, s.etapesuivi ";
+        $req .= "from commande c ";
+        $req .= "left join commandedocument cd on c.id=cd.id ";
+        $req .= "left join suivi s on c.id=s.id ";
+        $req .= "where cd.idLivreDvd = :id ";
+        $req .= "group by cd.id ";
+        $req .= "order by c.dateCommande DESC";
+        return $this->conn->query($req, $param);
+    }
 
     /**
      * suppresion d'une ou plusieurs lignes dans une table
@@ -181,17 +217,43 @@ class AccessBDD {
      */	
     public function delete($table, $champs){
         if($this->conn != null){
-            // construction de la requête
-            $requete = "delete from $table where ";
-            foreach ($champs as $key => $value){
-                $requete .= "$key=:$key and ";
+            switch ($table) {
+                case "lacommandedocument":
+                    return $this->deleteCommande($table, $champs);
+                default:
+                    // construction de la requête
+                    $requete = "delete from $table where ";
+                    foreach ($champs as $key => $value){
+                        $requete .= "$key=:$key and ";
+                }
             }
             // (enlève le dernier and)
-            $requete = substr($requete, 0, strlen($requete)-5);   
+            $requete = substr($requete, 0, strlen($requete)-5);
             return $this->conn->execute($requete, $champs);		
         }else{
             return null;
         }
+    }
+    
+    /**
+     * Suppression de l'entitée composée commandeDocument dans la bdd
+     *
+     * @param [type] $champs nom et valeur de chaque champs de la ligne
+     * @return true si l'ajout a fonctionné
+     */
+    public function deleteCommande($table, $champs)
+    {
+        $champsCommande = [ "id" => $champs["Id"], "dateCommande" => $champs["DateCommande"],
+            "montant" => $champs["Montant"]];
+        $champsCommandeDocument = [ "id" => $champs["Id"], "nbExemplaire" => $champs["NbExemplaire"],
+                "idLivreDvd" => $champs["IdLivreDvd"]];
+        $champsSuivi = [ "id" => $champs["Id"], "etapesuivi" => $champs["EtapeSuivi"]];
+        //$result = $this->insertOne("commande", $champsCommande);
+//        if ($result == null || $result == false){
+//            error_log("Failed to insert into commande");
+//            return null;
+//        }
+        return $this->delete('suivi', $champsSuivi) && $this->delete( "commandedocument", $champsCommandeDocument) && $this->delete('commande', $champsCommande);
     }
 
     /**
@@ -202,24 +264,49 @@ class AccessBDD {
      */	
     public function insertOne($table, $champs){
         if($this->conn != null && $champs != null){
-            // construction de la requête
-            $requete = "insert into $table (";
-            foreach ($champs as $key => $value){
-                $requete .= "$key,";
-            }
-            // (enlève la dernière virgule)
-            $requete = substr($requete, 0, strlen($requete)-1);
-            $requete .= ") values (";
-            foreach ($champs as $key => $value){
-                $requete .= ":$key,";
-            }
-            // (enlève la dernière virgule)
-            $requete = substr($requete, 0, strlen($requete)-1);
-            $requete .= ");";	
-            return $this->conn->execute($requete, $champs);		
-        }else{
-            return null;
+            switch ($table) {
+                case "lacommandedocument":
+                    return $this->insertCommande($table, $champs);
+                default:
+                    // construction de la requête
+                    $requete = "insert into $table (";
+                    foreach ($champs as $key => $value){
+                        $requete .= "$key,";
+                    }
+                    // (enlève la dernière virgule)
+                    $requete = substr($requete, 0, strlen($requete)-1);
+                    $requete .= ") values (";
+                    foreach ($champs as $key => $value){
+                        $requete .= ":$key,";
+                    }
+                    // (enlève la dernière virgule)
+                    $requete = substr($requete, 0, strlen($requete)-1);
+                $requete .= ");";
+            return $this->conn->execute($requete, $champs);}
+            }else{
+                return null;
         }
+    }
+    
+    /**
+     * Ajout de l'entitée composée commandeDocument dans la bdd
+     *
+     * @param [type] $champs nom et valeur de chaque champs de la ligne
+     * @return true si l'ajout a fonctionné
+     */
+    public function insertCommande($table, $champs)
+    {
+        $champsCommande = [ "id" => $champs["Id"], "dateCommande" => $champs["DateCommande"],
+            "montant" => $champs["Montant"]];
+        $champsCommandeDocument = [ "id" => $champs["Id"], "nbExemplaire" => $champs["NbExemplaire"],
+                "idLivreDvd" => $champs["IdLivreDvd"]];
+        $champsSuivi = [ "id" => $champs["Id"], "etapesuivi" => $champs["EtapeSuivi"]];
+        //$result = $this->insertOne("commande", $champsCommande);
+//        if ($result == null || $result == false){
+//            error_log("Failed to insert into commande");
+//            return null;
+//        }
+        return $this->insertOne('commande', $champsCommande) && $this->insertOne( "commandedocument", $champsCommandeDocument) && $this->insertOne('suivi', $champsSuivi);
     }
 
     /**
@@ -239,7 +326,8 @@ class AccessBDD {
             // (enlève la dernière virgule)
             $requete = substr($requete, 0, strlen($requete)-1);				
             $champs["id"] = $id;
-            $requete .= " where id=:id;";				
+            $requete .= " where id=:id;";
+            echo $requete;
             return $this->conn->execute($requete, $champs);		
         }else{
             return null;

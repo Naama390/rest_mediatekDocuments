@@ -48,7 +48,7 @@ class Controle{
             $result = $this->accessBDD->select($table, $champs);
         }
         if (gettype($result) != "array" && ($result == false || $result == null)){
-            $this->reponse(400, "requete invalide");
+            $this->reponse(400, "requete invalide 2");
         }else{	
             $this->reponse(200, "OK", $result);
         }
@@ -74,9 +74,13 @@ class Controle{
      * @param array $champs nom et valeur des champs
      */
     public function post($table, $champs){
-        $result = $this->accessBDD->insertOne($table, $champs);	
+//        if ($table == "commandedocument"){
+//            $result = $this->accessBDD->insertCommande($champs);
+//        } else{
+            $result = $this->accessBDD->insertOne($table, $champs);
+        //}
         if ($result == null || $result == false){
-            $this->reponse(400, "requete invalide");
+            $this->reponse(400, "requete invalide 1");
         }else{	
             $this->reponse(200, "OK");
         }
@@ -91,7 +95,7 @@ class Controle{
     public function put($table, $id, $champs){
         $result = $this->accessBDD->updateOne($table, $id, $champs);	
         if ($result == null || $result == false){
-            $this->reponse(400, "requete invalide");
+            $this->reponse(400, "requete invalide 4");
         }else{	
             $this->reponse(200, "OK");
         }
